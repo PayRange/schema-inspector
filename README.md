@@ -14,7 +14,7 @@ It's designed to work both client-side and server-side and to be scalable with a
 
 ### Browser
 <pre>bower install schema-inspector</pre>
-(Or download [async.js](https://raw.github.com/caolan/async/master/lib/async.js) and [schema-inspetor.js](https://raw.github.com/Atinux/schema-inspector/master/lib/schema-inspector.js) manually).
+(Or download [async.js](https://raw.github.com/caolan/async/master/lib/async.js) and [schema-inspector.js](https://raw.github.com/Atinux/schema-inspector/master/lib/schema-inspector.js) manually).
 ```html
 <script type="text/javascript" src="bower_components/async/lib/async.js"></script>
 <script type="text/javascript" src="bower_components/schema-inspector/lib/schema-inspector.js"></script>
@@ -30,39 +30,68 @@ It's designed to work both client-side and server-side and to be scalable with a
 ```javascript
 var inspector = require('schema-inspector');
 
-// Your object you want to validate (can be a JSON from your API)
-var candidate = {
-	type: 'sms',
-	to: [ 12, 'email@example.com', 'test']
+// Data that we want to sanitize and validate
+var data = {
+	firstname: 'sterling  ',
+	lastname: '  archer',
+	jobs: 'Special agent, cocaine Dealer',
+	email: 'NEVER!',
 };
 
-// Your validation schema
-var schema = {
+// Sanitization Schema
+var sanitization = {
 	type: 'object',
 	properties: {
-		type: { type: 'string', eq: 'email' },
-		to: {
+		firstname: { type: 'string', rules: ['trim', 'title'] },
+		lastname: { type: 'string', rules: ['trim', 'title'] },
+		jobs: {
 			type: 'array',
-			items: { type: 'string', pattern: 'email' }
-		}
+			splitWith: ',',
+			items: { type: 'string', rules: ['trim', 'title'] }
+		},
+		email: { type: 'string', rules: ['trim', 'lower'] }
 	}
 };
+// Let's update the data
+inspector.sanitize(sanitization, data);
+/*
+data is now:
+{
+	firstname: 'Sterling',
+	lastname: 'Archer',
+	jobs: ['Special Agent', 'Cocaine Dealer'],
+	email: 'never!'
+}
+*/
 
-var result = inspector.validate(schema, candidate); // Candidate is not valid
+// Validation schema
+var validation = {
+	type: 'object',
+	properties: {
+		firstname: { type: 'string', minLength: 1 },
+		lastname: { type: 'string', minLength: 1 },
+		jobs: {
+			type: 'array',
+			items: { type: 'string', minLength: 1 }
+		},
+		email: { type: 'string', pattern: 'email' }
+	}
+};
+var result = inspector.validate(validation, data);
 if (!result.valid)
 	console.log(result.format());
 /*
-	Property @.type: must be equal to "email", but is equal to "sms"
-	Property @.to[0]: must be a string, but is number
-	Property @.dolor[4]: must match [email], but is equal to "test"
+	Property @.email: must match [email], but is equal to "never!"
 */
 ```
+
+**Tips:** it's recommended to use one schema for the sanitization and another for the validation,
 
 ## In the browser
 
 ```html
 <script type="text/javascript" src="async.js"></script>
-<script type="text/javascript" src="schema-inspetor.js"></script>
+<script type="text/javascript" src="schema-inspector.js"></script>
 <script type="text/javascript">
 	var schema = { /* ... */ };
 	var candidate = { /* ... */ };
@@ -130,7 +159,7 @@ In the example below, the `inspector` variable will be used.  For the client-sid
 	* `integer`
 	* `boolean`
 	* `null`
-	* `date` (constructor === Date)
+	* `date` (instanceof Date), you can use the `validDate: true` to check if the date is valid
 	* `object` (constructor === Object)
 	* `array` (constructor === Array)
 	* A function (candidate isinstance)
@@ -741,9 +770,9 @@ Cast property to the given type according to the following description:
 	* string
 		* '{"love":"open source"}' -> { love: "open source" }
 * **to array from**:
-	* string 			("one,two,three" -> ["one", "two", "three"])
+	* string 			("one,two,three" -> ["one", "two", "three"], '[1,"two",{"three":true}]' -> [ 1, 'two', { three: true } ])
 	* anything except undefined and array 	(23 -> [ 23 ])
-	* To split with a custom string (other than ","), use the key **splitWith** (example: { type: "array", splitBy: "|"" } will transform "one|two|three" to ["one", "two", "three"]).*
+	* To split with a custom string (other than ","), use the key **splitWith** (example: { type: "array", splitWith: "|"" } will transform "one|two|three" to ["one", "two", "three"]).*
 
 __Example__
 
@@ -759,7 +788,7 @@ var c = [ 12.23, -34, true, false, 'true', 'false', [123, 234, 345], { obj: "yes
 
 var r = inspector.sanitize(schema, c);
 /*
-	c: [ '12.23', '-34', 'true', 'false', 'true', 'false', '123,234,345', '{"obj":"yes"}' ]
+	r.data: [ '12.23', '-34', 'true', 'false', 'true', 'false', '123,234,345', '{"obj":"yes"}' ]
 */
 ```
 
@@ -796,7 +825,7 @@ var c = {
 
 var r = inspector.sanitize(schema, c);
 /*
-	c: {
+	r.data: {
 		lorem: 10,
 		ipsum: 'NikitaJS',
 		dolor: 'sit amet'
@@ -825,7 +854,7 @@ var schema = {
 	properties: {
 		lorem: { type: 'number', optional: false, def: 12 },
 		ipsum: { type: 'string', optional: true, def: 23 },
-		dolor: { type: 'string', def: 'NikitaJS, def: 34 } // (optional: true)
+		dolor: { type: 'string', def: 'NikitaJS', def: 34 } // (optional: true)
 	}
 };
 
@@ -833,7 +862,7 @@ var c = { };
 
 var r = inspector.sanitize(schema, c);
 /*
-	c: {
+	r.data: {
 		lorem: 12 // Only lorem is set to 12 because it is not optional.
 	}
 */
@@ -879,7 +908,7 @@ var c = {
 
 var r = inspector.sanitize(schema, c);
 /*
-	c: {
+	r.data: {
 		lorem: ' THIS IS SPARTA! ',
 		ipsum: 'This Is Sparta!' // has been trimed, then titled
 	}
@@ -914,7 +943,7 @@ var c = [5, 10, 15, 20, 25];
 
 var r = inspector.sanitize(schema, c);
 /*
-	c: [10, 10, 15, 20, 20]
+	r.data: [10, 10, 15, 20, 20]
 	c[0] (5) was less than min (10), so it's been set to 10.
 	c[4] (25) was greater than max (20), so it's been set to 20.
 */
@@ -946,7 +975,7 @@ var c = ['short', 'mediumSize', 'tooLongForThisSchema'];
 
 var r = inspector.sanitize(schema, c);
 /*
-	c: ['short---', 'mediumSize', 'tooLongForT']
+	r.data: ['short---', 'mediumSize', 'tooLongForT']
 */
 ```
 
@@ -981,7 +1010,7 @@ var c = {
 
 var r = inspector.sanitize(schema, c);
 /*
-	c: {
+	r.data: {
 		good: 'yes'
 	}
 */
@@ -1025,7 +1054,7 @@ var c = [ 'Nikita', 'lol', 'NIKITA', 'thisIsGonnaBeSanitized!' ];
 
 var r = inspector.sanitize(schema, c);
 /*
-	c: [ 'Nikita', '_INVALID_', 'NIKITA', '_INVALID_' ]
+	r.data: [ 'Nikita', '_INVALID_', 'NIKITA', '_INVALID_' ]
 */
 ```
 
